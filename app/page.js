@@ -1,103 +1,165 @@
-import Image from "next/image";
+"use client";
+import { useState, useEffect, useMemo } from "react";
+import CapitalGainsCard from "./components/CapitalGainsCard";
+import HoldingsTable from "./components/HoldingsCard";
+import DisclaimersAccordion from "./components/Disclaimer";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [holdings, setHoldings] = useState([]);
+  const [selected, setSelected] = useState({});
+  const [selectAll, setSelectAll] = useState(false);
+  const [capitalGains, setCapitalGains] = useState(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    const fetchCapitalGains = async () => {
+      const res = await fetch("/api/capital-gains");
+      const data = await res.json();
+      setCapitalGains(data);
+    };
+
+    fetchCapitalGains();
+  }, []);
+
+  useEffect(() => {
+    const fetchHoldings = async () => {
+      const res = await fetch("/api/holdings");
+      const data = await res.json();
+      setHoldings(data);
+    };
+
+    fetchHoldings();
+  }, []);
+
+  const handleToggleRow = (coin, isChecked) => {
+    if (selectAll) {
+      setSelectAll(false);
+    }
+
+    if (isChecked) {
+      const newSelected = {};
+      newSelected[coin] = true;
+      setSelected(newSelected);
+    } else {
+      setSelected({});
+    }
+  };
+
+
+  const handleToggleSelectAll = (checked) => {
+    if (checked) {
+      const allSelected = {};
+      holdings.forEach((h) => {
+        allSelected[h.coin] = true;
+      });
+      setSelected(allSelected);
+      setSelectAll(true);
+    } else {
+      setSelected({});
+      setSelectAll(false);
+    }
+  };
+
+  const adjustedCapitalGains = useMemo(() => {
+    if (!capitalGains) return null;
+    let updated = JSON.parse(JSON.stringify(capitalGains));
+
+    Object.keys(selected).forEach((coin) => {
+      const holding = holdings.find((h) => h.coin === coin);
+
+      if (holding?.stcg?.gain) {
+        if (holding.stcg.gain > 0) {
+          updated.stcg.profits += holding.stcg.gain;
+        } else {
+          updated.stcg.losses += Math.abs(holding.stcg.gain);
+        }
+      }
+
+      if (holding?.ltcg?.gain) {
+        if (holding.ltcg.gain > 0) {
+          updated.ltcg.profits += holding.ltcg.gain;
+        } else {
+          updated.ltcg.losses += Math.abs(holding.ltcg.gain);
+        }
+      }
+    });
+
+    return updated;
+  }, [capitalGains, holdings, selected]);
+
+
+  const preHarvestGains = useMemo(() => {
+    if (!capitalGains) return 0;
+    const stcg = capitalGains.stcg.profits - capitalGains.stcg.losses;
+    const ltcg = capitalGains.ltcg.profits - capitalGains.ltcg.losses;
+    return stcg + ltcg;
+  }, [capitalGains]);
+
+  const postHarvestGains = useMemo(() => {
+    if (!adjustedCapitalGains) return 0;
+    const stcg = adjustedCapitalGains.stcg.profits - adjustedCapitalGains.stcg.losses;
+    const ltcg = adjustedCapitalGains.ltcg.profits - adjustedCapitalGains.ltcg.losses;
+    return stcg + ltcg;
+  }, [adjustedCapitalGains]);
+
+  const savingsAmount = preHarvestGains > postHarvestGains
+    ? preHarvestGains - postHarvestGains
+    : 0;
+
+
+  if (!capitalGains) return (
+    <div className="flex items-center justify-center h-screen w-full">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 border-solid"></div>
+      <span className="ml-4 text-white text-lg">Loading...</span>
+    </div>
+  );
+
+  return (
+    <div className="bg-gray-900 h-screen w-full overflow-x-hidden overflow-y-auto">
+      <div className="flex items-center justify-start space-x-2 h-auto w-full mt-4 px-4 md:px-16">
+        <h1 className="text-3xl font-bold text-white">Tax Harvesting</h1>
+        <div className="text-blue-500 underline"><TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger className="underline">How it works?</TooltipTrigger>
+            <TooltipContent className="bg-white text-black p-4 pb-4 rounded-md h-24 w-64">
+              <p className="pb-2">Lorem ipsum dolor sit amet consectetur. Euismod id posuere nibh semper mattis scelerisque tellus. Vel mattis diam duis morbi tellus dui consectetur. Know Morey</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+      <div className="flex items-center justify-start md:justify-center w-[95%] mt-4 pl-4 md:pl-16">
+        <DisclaimersAccordion />
+      </div>
+      <div className="w-screen flex flex-col pl-6 pr-3 pt-4 md:px-10 md:pt-4 md:flex-row md:gap-4">
+        <CapitalGainsCard
+          title="Pre-Harvesting"
+          gainsData={capitalGains}
+          background="bg-gray-800 text-white"
+        />
+        <CapitalGainsCard
+          title="After Harvesting"
+          gainsData={adjustedCapitalGains}
+          background="bg-blue-700 text-white"
+          highlightSavings={savingsAmount > 0}
+          savingsAmount={savingsAmount}
+        />
+      </div>
+      <div className="flex items-center justify-center w-full mt-4">
+        <HoldingsTable
+          holdings={holdings}
+          selected={selected}
+          selectAll={selectAll}
+          onToggleSelectAll={handleToggleSelectAll}
+          onToggleRow={handleToggleRow}
+        />
+      </div>
     </div>
   );
 }
